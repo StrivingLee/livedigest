@@ -19,7 +19,7 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
-from livedigest import pipeline, polish
+from livedigest import pipeline, polish, speakers
 from livedigest.config import Settings
 from livedigest.engines import Engine, EngineError, get_engine
 from livedigest.files import write_json
@@ -184,6 +184,9 @@ class Worker:
             started = time.monotonic()
             try:
                 lines = self.engine.transcribe(ref.path, hotwords)
+                lines = speakers.unify(
+                    ref.path, lines, ref.session_dir / speakers.REGISTRY
+                )
             # Any engine failure (a crash in a model library included) is
             # recorded, and the segment, still without a transcript, is
             # retried on the next start.

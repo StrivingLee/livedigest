@@ -26,7 +26,7 @@ def write_text(path: Path, text: str) -> None:
     tmp.replace(path)
 
 
-def write_json(path: Path, data: object, indent: int = 2) -> None:
+def write_json(path: Path, data: object, indent: int | None = 2) -> None:
     write_text(path, json.dumps(data, ensure_ascii=False, indent=indent))
 
 

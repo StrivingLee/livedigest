@@ -12,13 +12,17 @@ __all__ = ["Engine", "EngineError", "EngineSettings", "get_engine"]
 
 def get_engine(settings: EngineSettings) -> Engine:
     """Return the engine for ``settings``, built once and shared afterwards."""
-    if settings.engine not in {"auto", "qwen3", "whisper"}:
+    if settings.engine not in {"auto", "qwen3", "whisper", "moss"}:
         raise EngineError(f"unknown speech-to-text engine: {settings.engine}")
     return _build(settings)
 
 
 @cache
 def _build(settings: EngineSettings) -> Engine:
+    if settings.engine == "moss":
+        from livedigest.engines.moss import MossEngine
+
+        return MossEngine(settings)
     use_qwen = settings.engine == "qwen3" or (
         settings.engine == "auto" and importlib.util.find_spec("mlx_audio")
     )

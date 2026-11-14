@@ -29,14 +29,14 @@ rooms.toml ──► livedigest watch  (polls each room every 60 s via streamget
 ## Requirements / 环境要求
 
 **EN.**
-- macOS on Apple Silicon. Both speech engines (Qwen3-ASR via mlx-audio, mlx-whisper) run on MLX.
+- macOS on Apple Silicon. All speech engines (Qwen3-ASR and MOSS-Transcribe-Diarize via mlx-audio, mlx-whisper) run on MLX.
 - Python ≥ 3.12 and [uv](https://docs.astral.sh/uv/).
 - ffmpeg and ffprobe on `PATH` (e.g. `brew install ffmpeg`).
 - Optional: yt-dlp (YouTube fallback resolver); the `claude` CLI or any other command that reads a prompt on stdin and prints Markdown (polish and digest); OpenCLI (only for `add-video`).
 - The first transcription downloads about 2.5 GB of model weights from Hugging Face (`mlx-community/Qwen3-ASR-1.7B-8bit`).
 
 **ZH.**
-- 搭载 Apple Silicon 的 macOS。两个语音引擎（mlx-audio 上的 Qwen3-ASR、mlx-whisper）都基于 MLX。
+- 搭载 Apple Silicon 的 macOS。所有语音引擎（mlx-audio 上的 Qwen3-ASR 与 MOSS-Transcribe-Diarize、mlx-whisper）都基于 MLX。
 - Python ≥ 3.12 和 [uv](https://docs.astral.sh/uv/)。
 - `PATH` 中有 ffmpeg 和 ffprobe（如 `brew install ffmpeg`）。
 - 可选：yt-dlp（YouTube 备用解析）；`claude` CLI 或任何从 stdin 读提示词、输出 Markdown 的命令（用于整理和摘要）；OpenCLI（仅 `add-video` 需要）。
@@ -81,6 +81,7 @@ recordings/<platform>/<anchor>/<YYYY-MM-DD_HH-MM-SS>/
 ├── audio/p01_000.ts …    5-min audio segments (+ hidden .p01_segments.csv)
 ├── frames/p01_000120.jpg kept stills, named by seconds from session start
 ├── transcripts/p01_000.json   one per segment, times from session start
+├── speakers.json         voices heard so far (engine = "moss" only)
 └── video/p01_000.ts …    keep = "video" only
 ```
 
@@ -124,7 +125,7 @@ Global options: `--config PATH` (or `LIVEDIGEST_CONFIG`), `-v`.
 
 **EN.** `livedigest.toml` holds everything except secrets; relative paths resolve against the file's own folder.
 - `[capture]`: `segment_seconds` (300), `frame_interval` (10), `poll_seconds` (60), `merge_gap_seconds` (600, a room back within this is the same broadcast), `min_free_gb` (5.0), `quality = "low" | "best"` (default low: ask the platform for a smaller stream, since only speech and stills are kept; rooms with `keep = "video"` always get best), optional `proxy`.
-- `[transcribe]`: `engine = "auto" | "qwen3" | "whisper"` (auto picks Qwen3-ASR when mlx-audio is installed), `language`, `qwen3_model`, `whisper_model`.
+- `[transcribe]`: `engine = "auto" | "qwen3" | "whisper" | "moss"` (auto picks Qwen3-ASR when mlx-audio is installed), `language`, `qwen3_model`, `whisper_model`, `moss_model`. `engine = "moss"` labels who is speaking; see [Speaker labels](#speaker-labels--说话人标签).
 - `[polish]` and `[digest]`: `enabled`, `command` (default `["claude", "-p"]`, prompt on stdin, Markdown on stdout); `[digest] language` (default 简体中文). The prompts are written in Chinese.
 - `[douyin] opencli`: path to OpenCLI for `add-video`; empty searches `$OPENCLI`, `PATH`, then the newest `~/.nvm` Node.
 - `cookies.toml` (beside `livedigest.toml`, git-ignored): one cookie string per platform, e.g. `youtube = "..."`, passed to streamget for that platform.
@@ -132,11 +133,25 @@ Global options: `--config PATH` (or `LIVEDIGEST_CONFIG`), `-v`.
 
 **ZH.** 除密钥外的设置都在 `livedigest.toml`；相对路径以该文件所在目录为基准。
 - `[capture]`：`segment_seconds`（300）、`frame_interval`（10）、`poll_seconds`（60）、`merge_gap_seconds`（600，在此时间内恢复的直播间算同一场）、`min_free_gb`（5.0）、`quality = "low" | "best"`（默认 low：只保留语音和截图，所以向平台请求较小的流；`keep = "video"` 的直播间总是用 best）、可选的 `proxy`。
-- `[transcribe]`：`engine = "auto" | "qwen3" | "whisper"`（auto 在装有 mlx-audio 时选 Qwen3-ASR）、`language`、`qwen3_model`、`whisper_model`。
+- `[transcribe]`：`engine = "auto" | "qwen3" | "whisper" | "moss"`（auto 在装有 mlx-audio 时选 Qwen3-ASR）、`language`、`qwen3_model`、`whisper_model`、`moss_model`。`engine = "moss"` 会标出说话人，见[说话人标签](#speaker-labels--说话人标签)。
 - `[polish]` 与 `[digest]`：`enabled`、`command`（默认 `["claude", "-p"]`，提示词从 stdin 读入，Markdown 从 stdout 输出）；`[digest] language`（默认 简体中文）。提示词是中文写的。
 - `[douyin] opencli`：`add-video` 使用的 OpenCLI 路径；留空则依次查找 `$OPENCLI`、`PATH`、最新的 `~/.nvm` Node。
 - `cookies.toml`（与 `livedigest.toml` 同目录，已被 git 忽略）：每个平台一行 cookie，如 `youtube = "..."`，解析该平台时传给 streamget。
 - `glossary/_common.txt` 与 `glossary/<主播>.txt`：每行一个词，`#` 开始注释。这些词作为 hotwords 交给 Qwen3-ASR（Whisper 则写入其 prompt），并作为首选写法交给整理步骤。
+
+## Speaker labels / 说话人标签
+
+**EN.** With `engine = "moss"` the transcript says who is speaking. [MOSS-Transcribe-Diarize](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize) returns text, a time for every sentence and a speaker number in one pass. It numbers speakers afresh in each five-minute segment, so livedigest takes a voice embedding (ECAPA-TDNN) of each speaker and matches it against the voices already heard in the broadcast, kept in `speakers.json` in the session folder. One person therefore keeps one label (`S01`, `S02`, ...) for the whole broadcast, including across reconnects and restarts. The longest speaker gets the lowest number. A voice heard for less than three seconds that matches nobody is labelled `S?`.
+
+Labels appear in `transcript.md`, `transcript.srt` and `transcript.json`; the polished transcript starts a new paragraph when the speaker changes. The labels are anonymous: livedigest does not know names.
+
+It costs speed: about 2.7× real time instead of about 10×, so one or two live rooms keep up and more will queue until broadcasts end. The first use downloads about 1.9 GB. It has been tried on one 15-minute Douyin auction recording (see the table below), not yet on a live capture or on a panel with many speakers. Glossary terms are passed to it as hotwords.
+
+**ZH.** 设置 `engine = "moss"` 后，转写会标出谁在说话。[MOSS-Transcribe-Diarize](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize) 一次推理同时给出文字、每句话的时间和说话人编号。它在每个 5 分钟分段里都从头编号，所以 livedigest 为每个说话人提取声纹向量（ECAPA-TDNN），与本场直播已出现过的声音比对；这些声音保存在会话目录的 `speakers.json` 中。这样同一个人在整场直播里（包括断线重连和重启之后）始终是同一个编号（`S01`、`S02`……）。说话最多的人编号最小。说话不足 3 秒且对不上任何已知声音的，标为 `S?`。
+
+编号出现在 `transcript.md`、`transcript.srt` 和 `transcript.json` 中；整理版在换人说话时另起一段。编号是匿名的：livedigest 不知道姓名。
+
+代价是速度：约 2.7 倍实时，而不是约 10 倍，所以一两个直播间能跟上，更多则要排队到直播结束后处理。首次使用会下载约 1.9 GB。目前只在一段 15 分钟的抖音拍卖录像上试过（见下表），尚未在实时录制或多人对谈上验证。术语表中的词会作为 hotwords 传给它。
 
 ## Platform status / 平台状态
 
@@ -156,6 +171,7 @@ On a 16 GB Apple Silicon Mac / 在一台 16 GB 内存的 Apple Silicon Mac 上�
 | Disk, 1080p Douyin stream / 磁盘占用 | ~2 GB/h as video vs ~30 MB/h audio + 1–30 MB/h stills |
 | ffmpeg capture CPU / 录制 CPU | under 1% of a core per stream (165× real time offline) |
 | Qwen3-ASR 1.7B 8-bit speed / 转写速度 | ~10× real time: a 50-min recording in 292 s; a 60 s live segment in 5–7 s |
+| MOSS-Transcribe-Diarize speed / 说话人引擎速度 | ~2.7× real time: 15 min of audio in 335 s; the host kept one label across three segments, two brief other voices were separated |
 | Watcher memory, two rooms live / 内存 | ~2.7 GB footprint, flat (peak 3.9 GB) |
 | Bilibili capture coverage, three rooms, 12.7 min / B 站录制覆盖率 | ~100%, one part per room, no gaps |
 | Still-to-still hash distance, median / 截图哈希距离中位数 | slides lecture 11/256 · talking head 51 · product camera 85 |
@@ -164,8 +180,8 @@ On a 16 GB Apple Silicon Mac / 在一台 16 GB 内存的 Apple Silicon Mac 上�
 
 **EN.**
 - Apple Silicon only for transcription; other platforms would need another engine.
-- No speaker labels.
-- Timestamps inside each 20-second ASR chunk are interpolated by character count; chunk boundaries are exact.
+- Speaker labels need `engine = "moss"`, which is slower and less tested than the default engine; the default has none.
+- With Qwen3-ASR, timestamps inside each 20-second ASR chunk are interpolated by character count; chunk boundaries are exact.
 - Transcription is one worker thread. At ~10× real time it keeps up with several rooms, but many concurrent rooms will queue.
 - Stream URLs expire and CDNs drop connections. When ffmpeg exits, the room is re-resolved within seconds and capture continues as a new part; if the platform offers several stream URLs, a CDN host that just failed is avoided for a while. A short gap in the audio is still possible.
 - Xiaohongshu share links are single-use: each broadcast needs a fresh link. There is no "follow this creator" mode.
@@ -175,8 +191,8 @@ On a 16 GB Apple Silicon Mac / 在一台 16 GB 内存的 Apple Silicon Mac 上�
 
 **ZH.**
 - 转写只支持 Apple Silicon；其他平台需要换引擎。
-- 不区分说话人。
-- 每个 20 秒 ASR 片段内部的时间戳按字数插值；片段边界是准确的。
+- 说话人标签需要 `engine = "moss"`，它比默认引擎慢，测试也更少；默认引擎不区分说话人。
+- 使用 Qwen3-ASR 时，每个 20 秒 ASR 片段内部的时间戳按字数插值；片段边界是准确的。
 - 转写只有一个工作线程。约 10 倍实时速度足以跟上几个直播间，但同时开播的直播间很多时会排队。
 - 流地址会过期，CDN 也会断开连接。ffmpeg 退出后，几秒内重新解析该直播间并作为新 part 继续录制；若平台提供多个流地址，刚失败的 CDN 主机会被暂时避开。音频仍可能有短暂缺口。
 - 小红书分享链接只能用一次：每场直播都要新链接，没有“关注主播”模式。
@@ -199,9 +215,9 @@ uv run ruff check
 
 ## Acknowledgements / 致谢
 
-**EN.** livedigest builds on streamget, mlx-audio, MLX, Qwen3-ASR, mlx-whisper / Whisper, FFmpeg, yt-dlp and OpenCLI, and learned much from DouyinLiveRecorder. See [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) for what each project contributed and its licence. Platform names, trademarks and content belong to their owners.
+**EN.** livedigest builds on streamget, mlx-audio, MLX, Qwen3-ASR, MOSS-Transcribe-Diarize, SpeechBrain ECAPA-TDNN, mlx-whisper / Whisper, FFmpeg, yt-dlp and OpenCLI, and learned much from DouyinLiveRecorder. See [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) for what each project contributed and its licence. Platform names, trademarks and content belong to their owners.
 
-**ZH.** livedigest 构建在 streamget、mlx-audio、MLX、Qwen3-ASR、mlx-whisper / Whisper、FFmpeg、yt-dlp 和 OpenCLI 之上，并从 DouyinLiveRecorder 学到很多。各项目的贡献与许可证见 [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md)。平台名称、商标及内容归其所有者所有。
+**ZH.** livedigest 构建在 streamget、mlx-audio、MLX、Qwen3-ASR、MOSS-Transcribe-Diarize、SpeechBrain ECAPA-TDNN、mlx-whisper / Whisper、FFmpeg、yt-dlp 和 OpenCLI 之上，并从 DouyinLiveRecorder 学到很多。各项目的贡献与许可证见 [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md)。平台名称、商标及内容归其所有者所有。
 
 ## Licence / 许可证
 

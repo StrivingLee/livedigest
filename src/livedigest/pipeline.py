@@ -28,7 +28,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from livedigest import douyin, polish, recording, slides, transcript
+from livedigest import douyin, polish, recording, slides, speakers, transcript
 from livedigest.config import Settings
 from livedigest.digest import DigestError, write_digest
 from livedigest.engines import EngineError, get_engine
@@ -209,7 +209,7 @@ def _process_locked(
         log.info("transcribing %s", media)
         try:
             engine = get_engine(settings.transcribe)
-            segments = engine.transcribe(media, glossary)
+            segments = speakers.unify(media, engine.transcribe(media, glossary))
         except EngineError as exc:
             stages["transcribe"] = {"state": "failed", "error": str(exc)}
             record_failure(settings, "transcribe", media, str(exc))

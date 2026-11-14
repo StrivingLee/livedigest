@@ -57,6 +57,7 @@ PROMPT = """\
 - 按意思分段：一段讲一件事，通常两到六句话；不要在一句话中间断开。
 - 主播念出观众弹幕或提问时，从那一句另起一段，写成"【问】问题本身？"，回答接在同一段里。
 - 每段用 from 写出它从哪个 id 的句子开始。from 必须严格递增，第一段从第一个 id 开始，所有句子都要归入某一段；没有实质内容的句子并入相邻段落后删掉即可。
+- 句子带 speaker 时，那是自动识别的说话人编号（S? 表示没认出是谁）：换人说话就另起一段，并只在换人后的第一段段首写"S02："这样的编号；同一个人接着说的段落不写编号，段落不能只有编号。
 - 中英混杂时保留英文原词，英文和中文之间加空格。
 - 拿不准的修正写进 unsure，格式"原文→改为"；没有就给空数组。
 
@@ -175,7 +176,11 @@ def build_prompt(
     platform: str | None = None,
 ) -> str:
     payload = json.dumps(
-        [{"id": i, "text": seg.text} for i, seg in numbered],
+        [
+            {"id": i, "text": seg.text}
+            | ({"speaker": seg.speaker} if seg.speaker else {})
+            for i, seg in numbered
+        ],
         ensure_ascii=False,
         indent=0,
     )

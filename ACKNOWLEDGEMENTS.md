@@ -11,9 +11,11 @@ Installed by `uv sync` (Python packages) or by you (command-line tools). livedig
 | Project | Licence | What livedigest uses it for |
 |---|---|---|
 | [streamget](https://github.com/ihmily/streamget) (ihmily) | MIT | Turns a room link into a live stream URL for all four platforms (Douyin, Bilibili, Xiaohongshu, YouTube); see `src/livedigest/resolve.py`. |
-| [mlx-audio](https://github.com/Blaizzy/mlx-audio) (Prince Canuma / Blaizzy) | MIT | Runs the default speech-recognition model, Qwen3-ASR, on Apple Silicon. |
+| [mlx-audio](https://github.com/Blaizzy/mlx-audio) (Prince Canuma / Blaizzy) | MIT | Runs the default speech-recognition model, Qwen3-ASR, and the optional speaker-aware models on Apple Silicon. |
 | [MLX](https://github.com/ml-explore/mlx) (Apple) | MIT | The array framework under mlx-audio and mlx-whisper. |
 | [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) (Alibaba Qwen team) | Apache-2.0 | The default speech-recognition model. Weights are the 8-bit MLX conversion [`mlx-community/Qwen3-ASR-1.7B-8bit`](https://huggingface.co/mlx-community/Qwen3-ASR-1.7B-8bit) (model card: Apache-2.0), downloaded from Hugging Face on first use. |
+| [MOSS-Transcribe-Diarize](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize) (OpenMOSS team) | Apache-2.0 | Optional engine (`engine = "moss"`): one model that returns text, sentence times and a speaker label per line. Weights are [`OpenMOSS-Team/MOSS-Transcribe-Diarize`](https://huggingface.co/OpenMOSS-Team/MOSS-Transcribe-Diarize), run through mlx-audio. |
+| [SpeechBrain](https://github.com/speechbrain/speechbrain) ECAPA-TDNN (VoxCeleb) | Apache-2.0 | Voice embeddings that keep one speaker label per person across audio segments (only with `engine = "moss"`). Weights are the MLX conversion [`aufklarer/SpeechBrain-ECAPA-VoxCeleb-20M-MLX`](https://huggingface.co/aufklarer/SpeechBrain-ECAPA-VoxCeleb-20M-MLX) (model card: Apache-2.0), loaded by mlx-audio. |
 | [mlx-whisper](https://github.com/ml-explore/mlx-examples) (MLX examples, Apple) | MIT | Fallback engine (`engine = "whisper"`, or `auto` without mlx-audio). |
 | [Whisper](https://github.com/openai/whisper) (OpenAI) | MIT (code and weights) | The fallback model, as the MLX conversion `mlx-community/whisper-large-v3-turbo`. |
 | [FFmpeg](https://ffmpeg.org/) | LGPL-2.1-or-later, with optional GPL parts ([legal](https://ffmpeg.org/legal.html)) | Called as an external program: reads the live stream, writes the audio segments and the keyframe stills, optionally copies the video; decodes audio for the ASR engine; hashes stills. |

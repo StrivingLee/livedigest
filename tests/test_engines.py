@@ -8,7 +8,8 @@ import numpy as np
 import pytest
 
 from livedigest import engines
-from livedigest.engines import EngineError, EngineSettings, get_engine, qwen3
+from livedigest.engines import EngineError, EngineSettings, get_engine, moss, qwen3
+from livedigest.engines.moss import MossEngine
 from livedigest.engines.qwen3 import (
     Qwen3Engine,
     collapse_loops,
@@ -240,3 +241,27 @@ def test_qwen_long_audio_runs_one_call_per_window(monkeypatch):
     segments = engine.transcribe(Path("long.mp4"))
     assert [call[0] for call in model.calls] == ["a", "b"]
     assert [(s.start, s.end) for s in segments] == [(0.0, 20.0), (300.5, 320.5)]
+
+
+def test_moss_strips_the_label_and_scopes_speakers_to_the_window(monkeypatch):
+    model = FakeModel(
+        [
+            {"start": 1.0, "end": 2.5, "text": "[S01] 大家好", "speaker_id": "S01"},
+            {"start": 3.0, "end": 4.0, "text": "[S02] 来了", "speaker_id": "S02"},
+            {"start": 0.0, "end": 9.0, "text": "没有标签"},
+            {"start": 5.0, "end": 6.0, "text": "[S01] ", "speaker_id": "S01"},
+        ]
+    )
+    stt = types.ModuleType("mlx_audio.stt")
+    stt.load = lambda name: model
+    monkeypatch.setitem(sys.modules, "mlx_audio", types.ModuleType("mlx_audio"))
+    monkeypatch.setitem(sys.modules, "mlx_audio.stt", stt)
+    monkeypatch.setattr(moss, "decode_audio", lambda path, rate: np.zeros(1600, "f4"))
+    engine = get_engine(EngineSettings(engine="moss"))
+    assert isinstance(engine, MossEngine)
+    assert engine.transcribe(Path("a.ts"), ["术语"]) == [
+        Segment(1.0, 2.5, "大家好", "0:S01"),
+        Segment(3.0, 4.0, "来了", "0:S02"),
+        Segment(0.0, 9.0, "没有标签"),
+    ]
+    assert model.calls[0][1]["hotwords"] == ["术语"]

@@ -15,9 +15,11 @@ quality = "low"                          # low = smaller stream (speech and stil
 # proxy = "http://127.0.0.1:7890"
 
 [transcribe]
-engine = "auto"                          # auto = qwen3 when mlx-audio is installed, else whisper
+engine = "auto"                          # auto = qwen3 when mlx-audio is installed, else whisper;
+                                         # moss = labels speakers (S01, S02 ...), about 4x slower
 language = "zh"
 qwen3_model = "mlx-community/Qwen3-ASR-1.7B-8bit"
+moss_model = "OpenMOSS-Team/MOSS-Transcribe-Diarize"
 whisper_model = "mlx-community/whisper-large-v3-turbo"
 
 [polish]

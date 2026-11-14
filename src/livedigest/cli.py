@@ -13,7 +13,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from livedigest import compare, douyin, pipeline, rooms
+from livedigest import douyin, pipeline, rooms
 from livedigest.config import Settings, load_settings
 from livedigest.engines import EngineError, get_engine
 from livedigest.session import STATE_LIVE, find_sessions
@@ -190,16 +190,6 @@ def cmd_status(ns: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_compare(ns: argparse.Namespace) -> int:
-    try:
-        out = compare.build(ns.run_dir)
-    except (ValueError, OSError) as exc:
-        print(f"compare: {exc}", file=sys.stderr)
-        return 1
-    print(out)
-    return 0
-
-
 def _report(result: pipeline.JobResult) -> int:
     stages = result.status.get("stages", {})
     states = {name: stage.get("state") for name, stage in stages.items()}
@@ -254,16 +244,6 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("status", help="show paths, engine, rooms and tools").set_defaults(
         func=cmd_status
     )
-
-    comp = sub.add_parser(
-        "compare", help="write compare.html for a recording's kept engine runs"
-    )
-    comp.add_argument(
-        "run_dir",
-        type=Path,
-        help="a job's output directory, e.g. digests/<date>/<anchor>/<name>",
-    )
-    comp.set_defaults(func=cmd_compare)
 
     ns = parser.parse_args(argv)
     logging.basicConfig(

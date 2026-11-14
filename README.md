@@ -117,7 +117,6 @@ digests/
 | `livedigest process FILE… [--anchor A] [--redo transcribe\|polish\|digest]` | Transcribe, polish and digest local media files; `--redo` reruns a stage and every stage after it. |
 | `livedigest add-video URL [--no-process]` | Download one Douyin video through OpenCLI, then process it. |
 | `livedigest status` | Show paths, engine, rooms, free disk, cookies present and tools found. |
-| `livedigest compare RUN_DIR` | Write `compare.html`, comparing engine runs kept in subfolders of a job. |
 
 Global options: `--config PATH` (or `LIVEDIGEST_CONFIG`), `-v`.
 

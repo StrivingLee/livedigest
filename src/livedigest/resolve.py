@@ -83,10 +83,11 @@ async def _fetch(room: Room, settings: CaptureSettings) -> Any:
         proxy_addr=settings.proxy, cookies=settings.cookies.get(room.platform)
     )
     url = room.url
-    if room.platform == "douyin" and "live.douyin.com" not in url:
-        # Share links and profile pages only work through the app API.
-        data = await live.fetch_app_stream_data(url)
-    elif room.platform == "xiaohongshu":
+    # Xiaohongshu, and Douyin share links and profile pages, only work
+    # through the app API.
+    if room.platform == "xiaohongshu" or (
+        room.platform == "douyin" and "live.douyin.com" not in url
+    ):
         data = await live.fetch_app_stream_data(url)
     else:
         data = await live.fetch_web_stream_data(url)
@@ -104,6 +105,11 @@ def streamget_quality(room: Room, settings: CaptureSettings) -> str:
     return "LD"
 
 
+def _is_h265(url: str) -> bool:
+    query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
+    return query.get("codec", [""])[0] == "h265"
+
+
 def pick_url(platform: str, stream: Any) -> str | None:
     """FLV is one long HTTP response, which ffmpeg reads with the least overhead;
     YouTube serves HLS only; its record_url is the chosen variant playlist,
@@ -114,10 +120,8 @@ def pick_url(platform: str, stream: Any) -> str | None:
     flv, hls = stream.flv_url, stream.m3u8_url
     if platform == "youtube":
         return stream.record_url or hls
-    if platform == "douyin" and flv:
-        codec = urllib.parse.parse_qs(urllib.parse.urlsplit(flv).query).get("codec")
-        if codec and codec[0] == "h265" and hls:
-            return hls
+    if platform == "douyin" and flv and hls and _is_h265(flv):
+        return hls
     return flv or stream.record_url or hls
 
 
@@ -128,10 +132,8 @@ def candidate_urls(platform: str, stream: Any) -> list[str]:
     """
     first = pick_url(platform, stream)
     flv = stream.flv_url
-    if platform == "douyin" and flv and first != flv:
-        codec = urllib.parse.parse_qs(urllib.parse.urlsplit(flv).query).get("codec")
-        if codec and codec[0] == "h265":
-            flv = None
+    if platform == "douyin" and flv and first != flv and _is_h265(flv):
+        flv = None
     ordered = [first, flv, stream.record_url, stream.m3u8_url]
     return list(dict.fromkeys(url for url in ordered if url))
 

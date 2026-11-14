@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import logging
-import sys
 import threading
 from collections.abc import Sequence
 from pathlib import Path
 
-from livedigest.engines.base import EngineError, EngineSettings
+from livedigest.engines.base import EngineError, EngineSettings, clear_cache
 from livedigest.transcript import Segment
 
 log = logging.getLogger(__name__)
@@ -48,7 +47,7 @@ class WhisperEngine:
             except (OSError, ValueError, RuntimeError) as exc:
                 raise EngineError(f"mlx-whisper failed on {audio}: {exc}") from exc
             finally:
-                _clear_cache()
+                clear_cache()
         return [
             Segment(
                 start=float(s["start"]), end=float(s["end"]), text=s["text"].strip()
@@ -64,10 +63,3 @@ def _is_silence(segment: dict) -> bool:
         segment.get("no_speech_prob", 0.0) > 0.6
         and segment.get("avg_logprob", 0.0) < -1.0
     )
-
-
-def _clear_cache() -> None:
-    """Release MLX's buffer cache; a no-op when no model ever loaded MLX."""
-    mx = sys.modules.get("mlx.core")
-    if mx is not None:
-        mx.clear_cache()

@@ -3,19 +3,16 @@
 from __future__ import annotations
 
 import argparse
-import fcntl
 import json
 import logging
 import shutil
 import sys
-import tomllib
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 
 from livedigest import douyin, pipeline, rooms
 from livedigest.config import Settings, load_settings
 from livedigest.engines import EngineError, get_engine
+from livedigest.files import file_lock
 from livedigest.session import STATE_LIVE, find_sessions
 from livedigest.watch import Watcher
 from livedigest.worker import Worker
@@ -25,20 +22,19 @@ log = logging.getLogger("livedigest")
 WATCH_LOCK = ".watch.lock"
 
 
-@contextmanager
-def _watch_lock(settings: Settings) -> Iterator[bool]:
+def _watch_lock(settings: Settings):
     """Held by ``watch``; ``finish`` must not end sessions a watcher is capturing."""
-    settings.recordings_dir.mkdir(parents=True, exist_ok=True)
-    with (settings.recordings_dir / WATCH_LOCK).open("w") as fh:
-        try:
-            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            yield False
-            return
-        try:
-            yield True
-        finally:
-            fcntl.flock(fh, fcntl.LOCK_UN)
+    return file_lock(settings.recordings_dir / WATCH_LOCK)
+
+
+def _watcher(settings: Settings, worker: Worker) -> Watcher:
+    return Watcher(
+        settings.recordings_dir,
+        settings.rooms_path,
+        settings.capture,
+        on_segment=worker.on_segment,
+        on_session_end=worker.on_session_end,
+    )
 
 
 def cmd_add(ns: argparse.Namespace) -> int:
@@ -98,13 +94,7 @@ def cmd_watch(ns: argparse.Namespace) -> int:
         if queued:
             log.info("%d segment(s) left from earlier runs queued", queued)
         worker.start()
-        watcher = Watcher(
-            settings.recordings_dir,
-            settings.rooms_path,
-            settings.capture,
-            on_segment=worker.on_segment,
-            on_session_end=worker.on_session_end,
-        )
+        watcher = _watcher(settings, worker)
         log.info("watching %s; Ctrl-C to stop", settings.rooms_path)
         try:
             # Installs SIGINT/SIGTERM handlers that stop the loop cleanly.
@@ -123,13 +113,7 @@ def cmd_finish(ns: argparse.Namespace) -> int:
             return 1
         worker = Worker(settings, retry_failed=True)
         worker.scan()
-        Watcher(
-            settings.recordings_dir,
-            settings.rooms_path,
-            settings.capture,
-            on_segment=worker.on_segment,
-            on_session_end=worker.on_session_end,
-        ).recover(end_all=True)
+        _watcher(settings, worker).recover(end_all=True)
         worker.drain()
     print(f"transcribed {worker.transcribed} segment(s), {worker.failed} failed")
     return 1 if worker.failed else 0
@@ -165,9 +149,9 @@ def cmd_status(ns: argparse.Namespace) -> int:
         engine = f"error: {exc}"
     try:
         listed = rooms.load_rooms(settings.rooms_path)
-    except (OSError, tomllib.TOMLDecodeError, KeyError, ValueError) as exc:
+    except rooms.RoomsError as exc:
         listed = []
-        log.error("cannot read %s: %s", settings.rooms_path, exc)
+        log.error("%s", exc)
     recordings = settings.recordings_dir
     live = find_sessions(recordings, STATE_LIVE) if recordings.exists() else []
     disk = recordings if recordings.exists() else recordings.parent

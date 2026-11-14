@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
+
+from livedigest.files import write_json
 
 
 @dataclass
@@ -37,40 +38,17 @@ def to_srt(segments: list[Segment]) -> str:
     return "\n".join(blocks)
 
 
-_SRT_TIME = re.compile(
-    r"(\d+):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d+):(\d{2}):(\d{2})[,.](\d{3})"
-)
+META_KEYS = ("anchor", "source_url", "started_at", "duration")
 
 
-def parse_srt(text: str) -> list[Segment]:
-    segments = []
-    for block in re.split(r"\n\s*\n", text.replace("\r\n", "\n").strip()):
-        lines = block.strip().split("\n")
-        for i, line in enumerate(lines):
-            match = _SRT_TIME.search(line)
-            if not match:
-                continue
-            h1, m1, s1, ms1, h2, m2, s2, ms2 = (int(g) for g in match.groups())
-            body = " ".join(part.strip() for part in lines[i + 1 :]).strip()
-            if body:
-                segments.append(
-                    Segment(
-                        start=h1 * 3600 + m1 * 60 + s1 + ms1 / 1000,
-                        end=h2 * 3600 + m2 * 60 + s2 + ms2 / 1000,
-                        text=body,
-                    )
-                )
-            break
-    return segments
+def meta_lines(meta: dict, keys: tuple[str, ...] = META_KEYS) -> list[str]:
+    """The broadcast's facts as Markdown bullets, skipping unknown ones."""
+    return [f"- {key}: {meta[key]}" for key in keys if meta.get(key)]
 
 
 def to_markdown(segments: list[Segment], title: str, meta: dict) -> str:
     """One timestamped line per segment, under a short metadata header."""
-    header = [f"# {title}", ""]
-    for key in ("anchor", "source_url", "started_at", "duration", "engine"):
-        if meta.get(key):
-            header.append(f"- {key}: {meta[key]}")
-    header.append("")
+    header = [f"# {title}", "", *meta_lines(meta, (*META_KEYS, "engine")), ""]
     body = []
     for seg in segments:
         who = f"**{seg.speaker}** " if seg.speaker else ""
@@ -88,8 +66,7 @@ def compact_lines(segments: list[Segment]) -> str:
 
 
 def save_json(segments: list[Segment], path: Path) -> None:
-    payload = [asdict(seg) for seg in segments]
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=1), "utf-8")
+    write_json(path, [asdict(seg) for seg in segments], indent=1)
 
 
 def load_json(path: Path) -> list[Segment]:

@@ -17,13 +17,13 @@ from __future__ import annotations
 import json
 import logging
 import re
-import subprocess
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from livedigest import recording
+from livedigest import llm, recording
 from livedigest.config import PolishSettings
-from livedigest.transcript import Segment, stamp
+from livedigest.files import write_json
+from livedigest.transcript import Segment, meta_lines, stamp
 
 log = logging.getLogger(__name__)
 
@@ -268,20 +268,6 @@ def assemble(numbered: list[tuple[int, Segment]], items: list) -> list[Block]:
     return blocks
 
 
-def _run(command: list[str], prompt: str, timeout: int) -> str:
-    result = subprocess.run(
-        command,
-        input=prompt,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"exited {result.returncode}: {result.stderr[-1000:]}")
-    return result.stdout
-
-
 def polish(
     segments: list[Segment],
     anchor: str,
@@ -300,9 +286,9 @@ def polish(
         prompt = build_prompt(chunk, anchor, glossary, kind, platform)
         for _attempt in range(2):
             try:
-                output = _run(settings.command, prompt, settings.timeout_seconds)
+                output = llm.run(settings.command, prompt, settings.timeout_seconds)
                 blocks += assemble(chunk, parse_response(output))
-            except (RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
+            except (llm.LLMError, ValueError) as exc:
                 last_error = str(exc)
                 log.warning("polish chunk failed: %s", exc)
                 continue
@@ -329,9 +315,7 @@ def as_segments(blocks: list[Block]) -> list[Segment]:
 
 
 def save_blocks(blocks: list[Block], path: Path) -> None:
-    path.write_text(
-        json.dumps([asdict(b) for b in blocks], ensure_ascii=False, indent=1), "utf-8"
-    )
+    write_json(path, [asdict(b) for b in blocks], indent=1)
 
 
 def load_blocks(path: Path) -> list[Block]:
@@ -339,10 +323,7 @@ def load_blocks(path: Path) -> list[Block]:
 
 
 def to_markdown(blocks: list[Block], title: str, meta: dict) -> str:
-    lines = [f"# {title}", ""]
-    for key in ("anchor", "source_url", "started_at", "duration"):
-        if meta.get(key):
-            lines.append(f"- {key}: {meta[key]}")
+    lines = [f"# {title}", "", *meta_lines(meta)]
     lines += ["- 原始转写: [transcript.md](transcript.md)", ""]
     for block in blocks:
         if not block.text:

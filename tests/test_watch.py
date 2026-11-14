@@ -14,7 +14,7 @@ OFFLINE = StreamInfo(False, "bilibili", "主播", "")
 class FakeCapture:
     instances: list["FakeCapture"] = []
 
-    def __init__(self, info, paths, settings, keep, reported=0):
+    def __init__(self, info, paths, settings, keep):
         self.info, self.paths, self.keep = info, paths, keep
         self.pending: list[ClosedSegment] = []
         self.exited = self.finished = self.running = self.stopped = False

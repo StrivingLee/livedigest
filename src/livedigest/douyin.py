@@ -21,8 +21,8 @@ import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 
-from livedigest import recording
 from livedigest.config import Settings
+from livedigest.files import probe_duration, write_json
 
 log = logging.getLogger(__name__)
 
@@ -181,15 +181,12 @@ def fetch_video(
     name = safe_name(str(detail.get("desc") or "")) or aweme_id
     media = settings.recordings_dir / FOLDER / author / f"{name} [{aweme_id}].mp4"
     media.parent.mkdir(parents=True, exist_ok=True)
-    if not media.exists() or recording.probe_duration(media) is None:
+    if not media.exists() or probe_duration(media) is None:
         download(detail["play_url"], media, opener)
-    if recording.probe_duration(media) is None:
+    if probe_duration(media) is None:
         raise DouyinError(f"downloaded file is not playable: {media}")
     try:
-        media.with_suffix(".info.json").write_text(
-            json.dumps(info_from_detail(detail), ensure_ascii=False, indent=2),
-            "utf-8",
-        )
+        write_json(media.with_suffix(".info.json"), info_from_detail(detail))
     except (OSError, TypeError, ValueError) as exc:
         log.warning("video saved without its info file: %s", exc)
     return media

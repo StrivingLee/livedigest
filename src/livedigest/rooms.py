@@ -12,6 +12,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from livedigest.files import write_text
+
 PLATFORMS = ("douyin", "bilibili", "xiaohongshu", "youtube")
 KEEP_MODES = ("auto", "audio", "video")
 
@@ -19,6 +21,11 @@ KEEP_MODES = ("auto", "audio", "video")
 _URL_RE = re.compile(r"https?://[^\s，,。！!】）)\"'“”]+")
 _BILI_ROOM_RE = re.compile(r"^https?://live\.bilibili\.com/(?:h5/)?(\d+)")
 _YT_ID_RE = re.compile(r"^[\w-]{11}$")
+
+
+class RoomsError(ValueError):
+    """``rooms.toml`` is unreadable or lists an invalid room."""
+
 
 HEADER = "# Live rooms for `livedigest watch`; keep = auto | audio | video.\n"
 
@@ -114,22 +121,26 @@ def _youtube_url(host: str, parts: urllib.parse.SplitResult) -> str:
 def load_rooms(path: Path) -> list[Room]:
     if not path.exists():
         return []
-    with path.open("rb") as handle:
-        data = tomllib.load(handle)
-    rooms = []
-    for entry in data.get("room", []):
-        room = Room(
-            url=entry["url"],
-            platform=entry["platform"],
-            name=entry.get("name", ""),
-            keep=entry.get("keep", "auto"),
-            enabled=entry.get("enabled", True),
-        )
+    try:
+        with path.open("rb") as handle:
+            entries = tomllib.load(handle).get("room", [])
+        rooms = [
+            Room(
+                url=entry["url"],
+                platform=entry["platform"],
+                name=entry.get("name", ""),
+                keep=entry.get("keep", "auto"),
+                enabled=entry.get("enabled", True),
+            )
+            for entry in entries
+        ]
+    except (OSError, tomllib.TOMLDecodeError, KeyError, TypeError) as exc:
+        raise RoomsError(f"cannot read {path}: {exc!r}") from exc
+    for room in rooms:
         if room.platform not in PLATFORMS:
-            raise ValueError(f"{path}: unknown platform {room.platform!r}")
+            raise RoomsError(f"{path}: unknown platform {room.platform!r}")
         if room.keep not in KEEP_MODES:
-            raise ValueError(f"{path}: keep must be one of {KEEP_MODES}")
-        rooms.append(room)
+            raise RoomsError(f"{path}: keep must be one of {KEEP_MODES}")
     return rooms
 
 
@@ -153,9 +164,7 @@ def save_rooms(path: Path, rooms: list[Room]) -> None:
         lines.append(f"enabled = {'true' if room.enabled else 'false'}")
         blocks.append("\n".join(lines) + "\n")
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(HEADER + "\n" + "\n".join(blocks), encoding="utf-8")
-    tmp.replace(path)
+    write_text(path, HEADER + "\n" + "\n".join(blocks))
 
 
 def add_room(

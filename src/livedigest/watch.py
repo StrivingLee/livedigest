@@ -13,7 +13,6 @@ import signal
 import subprocess
 import threading
 import time
-import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -28,7 +27,7 @@ from livedigest.capture import (
     tail_segments,
 )
 from livedigest.resolve import ResolveError, StreamInfo, host_of, resolve
-from livedigest.rooms import Room, load_rooms, set_enabled
+from livedigest.rooms import Room, RoomsError, load_rooms, set_enabled
 from livedigest.session import (
     STATE_LIVE,
     SegmentRef,
@@ -434,14 +433,7 @@ class Watcher:
             if live:
                 session.touch(self._clock())
             session.save()
-            ref = SegmentRef(
-                session.dir,
-                part.index,
-                segment.index,
-                segment.path,
-                round(part.offset_seconds + segment.start, 3),
-                round(part.offset_seconds + segment.end, 3),
-            )
+            ref = SegmentRef.of(session.dir, part, segment)
             self._call(self.on_segment, ref)
         if final and raw:
             visual.process_window(session, part.index, raw, interval)
@@ -459,10 +451,8 @@ class Watcher:
     def _load_rooms(self) -> list[Room]:
         try:
             return load_rooms(self.rooms_path)
-        except (OSError, tomllib.TOMLDecodeError, KeyError, ValueError) as exc:
-            log.error(
-                "cannot read %s (%s); keeping the previous list", self.rooms_path, exc
-            )
+        except RoomsError as exc:
+            log.error("%s; keeping the previous list", exc)
             return self._rooms
 
     def _resolve(self, room: Room) -> StreamInfo | None:

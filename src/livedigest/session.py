@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 import json
-import re
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from livedigest.capture import PartPaths, read_segment_list
+from livedigest.capture import ClosedSegment, PartPaths, read_segment_list
+from livedigest.files import safe_name, write_json
 
 STATE_LIVE = "live"
 STATE_ENDED = "ended"
-_UNSAFE = re.compile(r'[\x00-\x1f/\\:*?"<>|]+')
 
 
 def iso(timestamp: float) -> str:
@@ -26,12 +25,6 @@ def iso(timestamp: float) -> str:
 
 def epoch(text: str) -> float:
     return datetime.fromisoformat(text).timestamp()
-
-
-def safe_name(text: str) -> str:
-    """Anchor names come from the platform and may contain path separators."""
-    cleaned = _UNSAFE.sub("_", text).strip(" .")
-    return cleaned[:80] or "unknown"
 
 
 @dataclass
@@ -56,6 +49,17 @@ class SegmentRef:
     # Seconds from session start.
     start: float
     end: float
+
+    @classmethod
+    def of(cls, session_dir: Path, part: Part, segment: ClosedSegment) -> SegmentRef:
+        return cls(
+            session_dir,
+            part.index,
+            segment.index,
+            segment.path,
+            round(part.offset_seconds + segment.start, 3),
+            round(part.offset_seconds + segment.end, 3),
+        )
 
 
 @dataclass
@@ -117,9 +121,7 @@ class Session:
     def save(self) -> None:
         data = asdict(self)
         del data["dir"]
-        tmp = self.dir / "session.json.tmp"
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), "utf-8")
-        tmp.replace(self.dir / "session.json")
+        write_json(self.dir / "session.json", data)
 
     @property
     def audio_dir(self) -> Path:
@@ -128,10 +130,6 @@ class Session:
     @property
     def frames_dir(self) -> Path:
         return self.dir / "frames"
-
-    @property
-    def transcripts_dir(self) -> Path:
-        return self.dir / "transcripts"
 
     @property
     def video_dir(self) -> Path:
@@ -195,17 +193,10 @@ def segment_refs(session: Session) -> list[SegmentRef]:
     refs = []
     for part in session.parts:
         listed = read_segment_list(PartPaths(session.dir, part.index))
-        for segment in listed[: part.segments]:
-            refs.append(
-                SegmentRef(
-                    session.dir,
-                    part.index,
-                    segment.index,
-                    segment.path,
-                    round(part.offset_seconds + segment.start, 3),
-                    round(part.offset_seconds + segment.end, 3),
-                )
-            )
+        refs += [
+            SegmentRef.of(session.dir, part, segment)
+            for segment in listed[: part.segments]
+        ]
     return refs
 
 

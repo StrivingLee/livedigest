@@ -20,13 +20,10 @@ problems can be told apart.
 
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import json
 import logging
 import time
-from collections.abc import Iterator
-from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -35,9 +32,11 @@ from livedigest import douyin, polish, recording, slides, transcript
 from livedigest.config import Settings
 from livedigest.digest import DigestError, write_digest
 from livedigest.engines import EngineError, get_engine
+from livedigest.files import file_lock, probe_duration, read_json, safe_name, write_json
 from livedigest.session import (
     STATE_ENDED,
     STATE_LIVE,
+    SegmentRef,
     Session,
     epoch,
     segment_refs,
@@ -70,10 +69,6 @@ def record_failure(settings: Settings, stage: str, source: Path, error: str) -> 
     log.error("%s failed for %s: %s", stage, source, error)
 
 
-def _safe(name: str) -> str:
-    return "".join("_" if c in '/\\:*?"<>|' else c for c in name).strip() or "unknown"
-
-
 def _local(text: str | None) -> str | None:
     """Session times carry a zone; job metadata uses naive local seconds."""
     if not text:
@@ -89,12 +84,12 @@ def job_dir_for(settings: Settings, media: Path, anchor: str) -> Path:
         or datetime.fromtimestamp(media.stat().st_mtime)
     )
     day = when.date().isoformat()
-    return settings.output_dir / day / _safe(anchor) / _safe(media.stem)
+    return settings.output_dir / day / safe_name(anchor) / safe_name(media.stem, 200)
 
 
 def session_job_dir(settings: Settings, session: Session) -> Path:
     day = _local(session.started_at)[:10]
-    return settings.output_dir / day / _safe(session.anchor) / session.dir.name
+    return settings.output_dir / day / safe_name(session.anchor) / session.dir.name
 
 
 def _published(media: Path) -> datetime | None:
@@ -102,31 +97,6 @@ def _published(media: Path) -> datetime | None:
         return datetime.fromisoformat(recording.read_info(media)["published_at"])
     except (KeyError, TypeError, ValueError):
         return None
-
-
-@contextmanager
-def _job_lock(job_dir: Path, wait: bool = False) -> Iterator[bool]:
-    job_dir.mkdir(parents=True, exist_ok=True)
-    with (job_dir / ".lock").open("w") as fh:
-        try:
-            fcntl.flock(fh, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
-        except BlockingIOError:
-            yield False
-            return
-        try:
-            yield True
-        finally:
-            fcntl.flock(fh, fcntl.LOCK_UN)
-
-
-def _read_json(path: Path) -> dict:
-    return json.loads(path.read_text("utf-8")) if path.exists() else {}
-
-
-def _write_json(path: Path, data: dict) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), "utf-8")
-    tmp.replace(path)
 
 
 def _title(meta: dict, fallback: str) -> str:
@@ -192,10 +162,10 @@ def process(
     media = media.resolve()
     anchor = anchor or recording.parse_name(media).anchor
     job_dir = job_dir_for(settings, media, anchor)
-    with _job_lock(job_dir) as acquired:
+    with file_lock(job_dir / ".lock") as acquired:
         if not acquired:
             log.info("already being processed: %s", job_dir)
-            return JobResult(job_dir, _read_json(job_dir / "status.json"), True)
+            return JobResult(job_dir, read_json(job_dir / "status.json"), True)
         result = _process_locked(settings, media, anchor, job_dir, retry_failed, redo)
     write_index(settings)
     return result
@@ -211,7 +181,7 @@ def _process_locked(
 ) -> JobResult:
     fp = recording.fingerprint(media)
     status_path = job_dir / "status.json"
-    status = _read_json(status_path)
+    status = read_json(status_path)
     if status.get("fingerprint") != fp:
         status = {"fingerprint": fp, "stages": {}}
     stages = status["stages"]
@@ -219,17 +189,17 @@ def _process_locked(
     if not any(_runnable(stages, stage, retry_failed) for stage in STAGES):
         return JobResult(job_dir, status, skipped=True)
 
-    duration = recording.probe_duration(media)
+    duration = probe_duration(media)
     if duration is None:
         error = "ffprobe cannot read the recording"
         record_failure(settings, "capture", media, error)
         stages["capture"] = {"state": "failed", "error": error}
-        _write_json(status_path, status)
+        write_json(status_path, status)
         return JobResult(job_dir, status)
     stages["capture"] = {"state": "done"}
 
     meta = build_meta(media, anchor, duration, fp)
-    _write_json(job_dir / "meta.json", meta)
+    write_json(job_dir / "meta.json", meta)
     title = _title(meta, media.stem)
     glossary = polish.load_glossary(settings.glossary_dir, anchor)
 
@@ -245,7 +215,7 @@ def _process_locked(
             record_failure(settings, "transcribe", media, str(exc))
         else:
             meta["engine"] = engine.name
-            _write_json(job_dir / "meta.json", meta)
+            write_json(job_dir / "meta.json", meta)
             _write_transcript(job_dir, segments, title, meta, [])
             stages["transcribe"] = {
                 "state": "done",
@@ -255,7 +225,7 @@ def _process_locked(
             }
             if not segments:
                 stages["transcribe"]["warning"] = "no speech recognised"
-        _write_json(status_path, status)
+        write_json(status_path, status)
     elif (job_dir / "transcript.json").exists():
         segments = transcript.load_json(job_dir / "transcript.json")
         meta["engine"] = stages.get("transcribe", {}).get("engine")
@@ -269,13 +239,13 @@ def _process_locked(
 # -- captured broadcasts -------------------------------------------------------
 
 
-def _merge(session: Session) -> tuple[list[Segment], list[str], int]:
+def _merge(refs: list[SegmentRef]) -> tuple[list[Segment], list[str], int]:
     """Lines of every transcribed audio segment, the engines that made them,
     and how many audio segments have no transcript (yet)."""
     segments: list[Segment] = []
     engines: list[str] = []
     missing = 0
-    for ref in segment_refs(session):
+    for ref in refs:
         path = transcript_path(ref)
         try:
             data = json.loads(path.read_text("utf-8"))
@@ -288,9 +258,8 @@ def _merge(session: Session) -> tuple[list[Segment], list[str], int]:
     return segments, engines, missing
 
 
-def session_meta(session: Session, engines: list[str]) -> dict:
+def session_meta(session: Session, refs: list[SegmentRef], engines: list[str]) -> dict:
     """Job metadata from ``session.json``; times are local, without a zone."""
-    refs = segment_refs(session)
     if session.ended_at:
         duration = epoch(session.ended_at) - epoch(session.started_at)
     else:
@@ -323,14 +292,15 @@ def _session_transcript(
     session: Session, job_dir: Path
 ) -> tuple[list[Segment], dict, list[slides.Still], int]:
     """Write the merged transcript; also returns how many segments lack one."""
-    segments, engines, missing = _merge(session)
-    meta = session_meta(session, engines)
+    refs = segment_refs(session)
+    segments, engines, missing = _merge(refs)
+    meta = session_meta(session, refs, engines)
     stills = (
         slides.copy_stills(session.frames_dir, job_dir)
         if slides.wanted(session.visual)
         else []
     )
-    _write_json(job_dir / "meta.json", meta)
+    write_json(job_dir / "meta.json", meta)
     _write_transcript(job_dir, segments, _title(meta, session.id), meta, stills)
     return segments, meta, stills, missing
 
@@ -343,12 +313,12 @@ def refresh_session(settings: Settings, session_dir: Path) -> bool:
     """
     session = Session.load(session_dir)
     job_dir = session_job_dir(settings, session)
-    with _job_lock(job_dir) as acquired:
+    with file_lock(job_dir / ".lock") as acquired:
         if not acquired:
             return False
         segments, meta, _, _ = _session_transcript(session, job_dir)
         status_path = job_dir / "status.json"
-        status = _read_json(status_path) or {"stages": {}}
+        status = read_json(status_path) or {"stages": {}}
         status["stages"]["transcribe"] = {
             "state": "live" if session.state == STATE_LIVE else "partial",
             "engine": meta["engine"],
@@ -356,7 +326,7 @@ def refresh_session(settings: Settings, session_dir: Path) -> bool:
             "audio_segments": meta["segments"],
         }
         status["updated_at"] = datetime.now().isoformat(timespec="seconds")
-        _write_json(status_path, status)
+        write_json(status_path, status)
     write_index(settings)
     return True
 
@@ -366,7 +336,6 @@ def finalize_session(
     session_dir: Path,
     *,
     retry_failed: bool = True,
-    redo: str | None = None,
 ) -> JobResult:
     """Merge an ended broadcast's segments, then polish, digest and index it.
 
@@ -375,10 +344,10 @@ def finalize_session(
     """
     session = Session.load(session_dir)
     job_dir = session_job_dir(settings, session)
-    with _job_lock(job_dir, wait=True):
+    with file_lock(job_dir / ".lock", wait=True):
         segments, meta, stills, missing = _session_transcript(session, job_dir)
         status_path = job_dir / "status.json"
-        status = _read_json(status_path) or {"stages": {}}
+        status = read_json(status_path) or {"stages": {}}
         stages = status.setdefault("stages", {})
         digest = hashlib.sha256(
             json.dumps([asdict(s) for s in segments], ensure_ascii=False).encode()
@@ -386,7 +355,6 @@ def finalize_session(
         if status.get("transcript_hash") != digest:
             status["transcript_hash"] = digest
             _forget(stages, "polish")
-        _forget(stages, redo)
         stages["transcribe"] = {
             "state": "partial" if missing else "done",
             "engine": meta["engine"],
@@ -397,7 +365,7 @@ def finalize_session(
             stages["transcribe"]["missing"] = missing
         if not segments:
             stages["transcribe"]["warning"] = "no speech recognised"
-        _write_json(status_path, status)
+        write_json(status_path, status)
         glossary = polish.load_glossary(settings.glossary_dir, session.anchor)
         _later_stages(
             settings,
@@ -411,7 +379,7 @@ def finalize_session(
             stills,
         )
         status["finalized_at"] = status["updated_at"]
-        _write_json(status_path, status)
+        write_json(status_path, status)
     write_index(settings)
     return JobResult(job_dir, status)
 
@@ -420,7 +388,7 @@ def needs_finalize(settings: Settings, session: Session, retry_failed: bool) -> 
     """An ended broadcast whose job never finished (or failed, when retrying)."""
     if session.state != STATE_ENDED:
         return False
-    status = _read_json(session_job_dir(settings, session) / "status.json")
+    status = read_json(session_job_dir(settings, session) / "status.json")
     if not status.get("finalized_at"):
         return True
     stages = status.get("stages", {})
@@ -489,7 +457,7 @@ def _later_stages(
                 "clean_chars": sum(len(b.text) for b in blocks),
                 "seconds": round(time.monotonic() - started, 1),
             }
-        _write_json(status_path, status)
+        write_json(status_path, status)
 
     digest_source = segments
     if stages.get("polish", {}).get("state") == "done":
@@ -515,10 +483,10 @@ def _later_stages(
                     _digest_page(title, meta, body), "utf-8"
                 )
                 stages["digest"] = {"state": "done"}
-        _write_json(status_path, status)
+        write_json(status_path, status)
 
     status["updated_at"] = datetime.now().isoformat(timespec="seconds")
-    _write_json(status_path, status)
+    write_json(status_path, status)
 
 
 def _digest_page(title: str, meta: dict, body: str) -> str:
@@ -545,8 +513,8 @@ def write_index(settings: Settings) -> None:
     for meta_path in settings.output_dir.glob("*/*/*/meta.json"):
         job_dir = meta_path.parent
         try:
-            meta = _read_json(meta_path)
-            stages = _read_json(job_dir / "status.json").get("stages", {})
+            meta = read_json(meta_path)
+            stages = read_json(job_dir / "status.json").get("stages", {})
         except ValueError:
             log.warning("unreadable job %s skipped in the index", job_dir)
             continue
@@ -567,7 +535,7 @@ def write_index(settings: Settings) -> None:
         )
     rows.sort(key=lambda r: (r["started_at"] or "", r["job"]), reverse=True)
     settings.output_dir.mkdir(parents=True, exist_ok=True)
-    _write_json(settings.output_dir / "index.json", {"jobs": rows})
+    write_json(settings.output_dir / "index.json", {"jobs": rows})
 
     lines = [
         "# Live digests",

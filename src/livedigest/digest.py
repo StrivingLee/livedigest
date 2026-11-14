@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import subprocess
-
-from livedigest import recording
+from livedigest import llm, recording
 from livedigest.config import DigestSettings
-from livedigest.transcript import Segment, compact_lines
+from livedigest.transcript import Segment, compact_lines, meta_lines
 
 PROMPT = """\
 你会收到{source}的自动语音转写稿，每行以 [HH:MM:SS] 开头，是距{start}的时间。
@@ -55,16 +53,11 @@ class DigestError(Exception):
 
 
 def build_prompt(segments: list[Segment], meta: dict, language: str) -> str:
-    meta_lines = "\n".join(
-        f"- {key}: {meta[key]}"
-        for key in ("anchor", "source_url", "started_at", "duration")
-        if meta.get(key)
-    )
     return PROMPT.format(
         **WORDS.get(meta.get("kind"), WORDS["live"]),
         source=recording.source_phrase(meta.get("kind"), meta.get("platform")),
         language=language,
-        meta=meta_lines or "- (无)",
+        meta="\n".join(meta_lines(meta)) or "- (无)",
         transcript=compact_lines(segments),
     )
 
@@ -73,23 +66,9 @@ def write_digest(segments: list[Segment], meta: dict, settings: DigestSettings) 
     """Pipe the prompt to ``settings.command`` on stdin and return its output."""
     prompt = build_prompt(segments, meta, settings.language)
     try:
-        result = subprocess.run(
-            settings.command,
-            input=prompt,
-            capture_output=True,
-            text=True,
-            timeout=settings.timeout_seconds,
-            check=False,
-        )
-    except FileNotFoundError as exc:
-        raise DigestError(f"digest command not found: {settings.command[0]}") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise DigestError(f"digest timed out after {exc.timeout}s") from exc
-    if result.returncode != 0:
-        raise DigestError(
-            f"digest command exited {result.returncode}: {result.stderr[-2000:]}"
-        )
-    text = result.stdout.strip()
+        text = llm.run(settings.command, prompt, settings.timeout_seconds).strip()
+    except llm.LLMError as exc:
+        raise DigestError(f"digest command {exc}") from exc
     if not text:
         raise DigestError("digest command returned no text")
     return text

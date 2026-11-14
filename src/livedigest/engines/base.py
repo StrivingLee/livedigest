@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,3 +36,10 @@ class Engine(Protocol):
     def transcribe(self, audio: Path, hotwords: Sequence[str] = ()) -> list[Segment]:
         """Transcribe one file; times are seconds from the start of that file."""
         ...
+
+
+def clear_cache() -> None:
+    """Release MLX's buffer cache; a no-op when no model ever loaded MLX."""
+    mx = sys.modules.get("mlx.core")
+    if mx is not None:
+        mx.clear_cache()

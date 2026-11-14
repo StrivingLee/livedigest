@@ -15,6 +15,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from livedigest.files import probe_duration
 from livedigest.resolve import BILIBILI_REFERER, StreamInfo
 
 log = logging.getLogger(__name__)
@@ -214,20 +215,6 @@ def read_segment_list(paths: PartPaths) -> list[ClosedSegment]:
     return segments
 
 
-def probe_duration(path: Path) -> float | None:
-    try:
-        result = subprocess.run(
-            [
-                "ffprobe", "-v", "error", "-show_entries", "format=duration",
-                "-of", "csv=p=0", str(path),
-            ],
-            capture_output=True, text=True, timeout=60,
-        )  # fmt: skip
-        return float(result.stdout.strip())
-    except (OSError, subprocess.TimeoutExpired, ValueError):
-        return None
-
-
 def tail_segments(paths: PartPaths, known: list[ClosedSegment]) -> list[ClosedSegment]:
     """Segments on disk that ffmpeg never listed: it was killed mid-segment.
 
@@ -270,14 +257,13 @@ class Capture:
         paths: PartPaths,
         settings: CaptureSettings,
         keep: str,
-        reported: int = 0,
     ) -> None:
         self.info = info
         self.paths = paths
         self.settings = settings
         self.keep = keep
         self.frames = keep != "audio"
-        self._reported = reported
+        self._reported = 0
         self._process: subprocess.Popen[bytes] | None = None
         self._finished = False
 
@@ -346,10 +332,6 @@ class Capture:
         new = segments[self._reported :]
         self._reported = len(segments)
         return new
-
-    @property
-    def reported(self) -> int:
-        return self._reported
 
     @property
     def finished(self) -> bool:

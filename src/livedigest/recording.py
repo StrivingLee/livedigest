@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import subprocess
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -54,31 +53,6 @@ def parse_name(path: Path) -> NameInfo:
     started = datetime.strptime(match["stamp"], "%Y-%m-%d_%H-%M-%S")
     segment = int(match["segment"]) if match["segment"] else None
     return NameInfo(anchor=match["prefix"], started_at=started, segment=segment)
-
-
-def probe_duration(path: Path) -> float | None:
-    """Return the media duration in seconds, or None if ffprobe cannot read it."""
-    result = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "json",
-            str(path),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        return None
-    try:
-        return float(json.loads(result.stdout)["format"]["duration"])
-    except (KeyError, ValueError, json.JSONDecodeError):
-        return None
 
 
 def fingerprint(path: Path, chunk: int = 4 * 1024 * 1024) -> str:

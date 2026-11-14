@@ -12,7 +12,6 @@ Everything is resumable from disk: a segment is done once its
 
 from __future__ import annotations
 
-import json
 import logging
 import queue
 import threading
@@ -23,6 +22,7 @@ from pathlib import Path
 from livedigest import pipeline, polish
 from livedigest.config import Settings
 from livedigest.engines import Engine, EngineError, get_engine
+from livedigest.files import write_json
 from livedigest.session import (
     STATE_ENDED,
     SegmentRef,
@@ -234,6 +234,4 @@ def write_segment(
         "segments": [asdict(line) for line in shifted],
     }
     out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=1), "utf-8")
-    tmp.replace(out)
+    write_json(out, payload, indent=1)

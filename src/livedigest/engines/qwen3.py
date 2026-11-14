@@ -5,13 +5,12 @@ from __future__ import annotations
 import logging
 import re
 import subprocess
-import sys
 import threading
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from livedigest.engines.base import EngineError, EngineSettings
+from livedigest.engines.base import EngineError, EngineSettings, clear_cache
 from livedigest.transcript import Segment
 
 log = logging.getLogger(__name__)
@@ -172,7 +171,7 @@ class Qwen3Engine:
             ) as exc:
                 raise EngineError(f"qwen3-asr failed on {audio}: {exc}") from exc
             finally:
-                _clear_cache()
+                clear_cache()
         return segments
 
     def _segments(self, raw: dict[str, Any]) -> list[Segment]:
@@ -197,10 +196,3 @@ class Qwen3Engine:
         if self.settings.sentence_split:
             return split_sentences(start, end, text)
         return [Segment(start, end, text)]
-
-
-def _clear_cache() -> None:
-    """Release MLX's buffer cache; a no-op when no model ever loaded MLX."""
-    mx = sys.modules.get("mlx.core")
-    if mx is not None:
-        mx.clear_cache()

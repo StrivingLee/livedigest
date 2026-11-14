@@ -231,7 +231,7 @@ def _process_locked(
         meta["engine"] = stages.get("transcribe", {}).get("engine")
 
     _later_stages(
-        settings, job_dir, status, meta, segments, glossary, media, retry_failed, []
+        settings, job_dir, status, meta, title, segments, glossary, media, retry_failed
     )
     return JobResult(job_dir, status)
 
@@ -305,6 +305,15 @@ def _session_transcript(
     return segments, meta, stills, missing
 
 
+def _transcribe_stage(state: str, meta: dict, segments: list[Segment]) -> dict:
+    return {
+        "state": state,
+        "engine": meta["engine"],
+        "segments": len(segments),
+        "audio_segments": meta["segments"],
+    }
+
+
 def refresh_session(settings: Settings, session_dir: Path) -> bool:
     """Rewrite a broadcast's merged transcript after another segment.
 
@@ -319,12 +328,8 @@ def refresh_session(settings: Settings, session_dir: Path) -> bool:
         segments, meta, _, _ = _session_transcript(session, job_dir)
         status_path = job_dir / "status.json"
         status = read_json(status_path) or {"stages": {}}
-        status["stages"]["transcribe"] = {
-            "state": "live" if session.state == STATE_LIVE else "partial",
-            "engine": meta["engine"],
-            "segments": len(segments),
-            "audio_segments": meta["segments"],
-        }
+        state = "live" if session.state == STATE_LIVE else "partial"
+        status["stages"]["transcribe"] = _transcribe_stage(state, meta, segments)
         status["updated_at"] = datetime.now().isoformat(timespec="seconds")
         write_json(status_path, status)
     write_index(settings)
@@ -346,6 +351,7 @@ def finalize_session(
     job_dir = session_job_dir(settings, session)
     with file_lock(job_dir / ".lock", wait=True):
         segments, meta, stills, missing = _session_transcript(session, job_dir)
+        title = _title(meta, session.id)
         status_path = job_dir / "status.json"
         status = read_json(status_path) or {"stages": {}}
         stages = status.setdefault("stages", {})
@@ -355,12 +361,9 @@ def finalize_session(
         if status.get("transcript_hash") != digest:
             status["transcript_hash"] = digest
             _forget(stages, "polish")
-        stages["transcribe"] = {
-            "state": "partial" if missing else "done",
-            "engine": meta["engine"],
-            "segments": len(segments),
-            "audio_segments": meta["segments"],
-        }
+        stages["transcribe"] = _transcribe_stage(
+            "partial" if missing else "done", meta, segments
+        )
         if missing:
             stages["transcribe"]["missing"] = missing
         if not segments:
@@ -368,16 +371,9 @@ def finalize_session(
         write_json(status_path, status)
         glossary = polish.load_glossary(settings.glossary_dir, session.anchor)
         _later_stages(
-            settings,
-            job_dir,
-            status,
-            meta,
-            segments,
-            glossary,
-            session_dir,
-            retry_failed,
-            stills,
-        )
+            settings, job_dir, status, meta, title, segments, glossary,
+            session_dir, retry_failed, stills,
+        )  # fmt: skip
         status["finalized_at"] = status["updated_at"]
         write_json(status_path, status)
     write_index(settings)
@@ -416,16 +412,16 @@ def _later_stages(
     job_dir: Path,
     status: dict,
     meta: dict,
+    title: str,
     segments: list[Segment] | None,
     glossary: list[str],
     source: Path,
     retry_failed: bool,
-    stills: list[slides.Still],
+    stills: list[slides.Still] | tuple = (),
 ) -> None:
     """Polish and digest; each failure falls back without blocking the next."""
     stages = status["stages"]
     status_path = job_dir / "status.json"
-    title = _title(meta, source.name)
 
     polishing = settings.polish.enabled and _runnable(stages, "polish", retry_failed)
     if segments and polishing:

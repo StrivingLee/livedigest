@@ -1,0 +1,5 @@
+# Terms for every host, one per line; '#' starts a comment.
+# Passed to the speech-to-text engine as hotwords (or a prompt, for Whisper)
+# and given to the polish step as preferred spellings. Per-host terms go in
+# <anchor>.txt.
+小红书

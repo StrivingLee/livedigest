@@ -1,0 +1,39 @@
+[project]
+name = "livedigest"
+version = "0.1.0"
+description = "Audio-first capture of Douyin, Bilibili, Xiaohongshu and YouTube live streams into timestamped transcripts and digests"
+authors = [
+    { name = "Lee" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "mlx-audio>=0.6.5",
+    "mlx-whisper>=0.4.3",
+    "streamget>=4.0.10",
+]
+
+[project.scripts]
+livedigest = "livedigest.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.14,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Prompt text: one instruction per line reads better than wrapped CJK.
+"src/livedigest/polish.py" = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.17.1",
+]

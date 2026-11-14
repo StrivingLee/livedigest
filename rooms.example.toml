@@ -1,0 +1,28 @@
+# Live rooms for `livedigest watch`. Copy to rooms.toml (not tracked).
+#
+# url       a room link; share messages are normalized when added from the CLI
+# platform  douyin | bilibili | xiaohongshu | youtube
+# keep      auto  = audio + stills, pruned to distinct slides / sparse context
+#           audio = audio only
+#           video = auto + a full stream copy in video/ (about 2 GB per hour)
+# enabled   false to pause a room; single-use xhslink.com links are disabled
+#           automatically once their broadcast ends
+
+[[room]]
+url = "https://live.bilibili.com/123456"
+platform = "bilibili"
+name = "example lecture room"
+keep = "auto"
+enabled = true
+
+[[room]]
+url = "https://v.douyin.com/XXXXXXXXXXX/"
+platform = "douyin"
+keep = "audio"
+enabled = false
+
+[[room]]
+url = "https://www.youtube.com/@NASA/live"
+platform = "youtube"
+keep = "auto"
+enabled = false

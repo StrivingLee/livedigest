@@ -1,0 +1,7 @@
+# Sample per-anchor glossary: copy to <anchor name>.txt (the anchor name as
+# the platform shows it) and list that host's terms, one per line.
+FIRE        # financial independence, retire early
+Vanguard
+NRA         # non-resident alien
+CD          # certificate of deposit
+定存

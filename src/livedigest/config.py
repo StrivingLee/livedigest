@@ -37,13 +37,6 @@ class PolishSettings:
 
 
 @dataclass
-class DouyinSettings:
-    # opencli executable for `add-video`; empty searches $OPENCLI, PATH, then
-    # the newest ~/.nvm Node install.
-    opencli: str = ""
-
-
-@dataclass
 class Settings:
     recordings_dir: Path
     output_dir: Path
@@ -52,7 +45,6 @@ class Settings:
     transcribe: EngineSettings = field(default_factory=EngineSettings)
     digest: DigestSettings = field(default_factory=DigestSettings)
     polish: PolishSettings = field(default_factory=PolishSettings)
-    douyin: DouyinSettings = field(default_factory=DouyinSettings)
     glossary_dir: Path = PROJECT_ROOT / "glossary"
 
 
@@ -92,6 +84,5 @@ def load_settings(path: Path | None = None) -> Settings:
         transcribe=EngineSettings(**data.get("transcribe", {})),
         digest=DigestSettings(**data.get("digest", {})),
         polish=PolishSettings(**data.get("polish", {})),
-        douyin=DouyinSettings(**data.get("douyin", {})),
         glossary_dir=_resolve(data.get("glossary_dir", "glossary"), base),
     )

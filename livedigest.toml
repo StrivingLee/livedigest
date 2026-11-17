@@ -30,6 +30,3 @@ command = ["claude", "-p"]
 enabled = true
 command = ["claude", "-p"]               # prompt on stdin, Markdown on stdout
 language = "简体中文"
-
-[douyin]
-opencli = ""                             # "" = $OPENCLI, PATH, then the newest ~/.nvm Node

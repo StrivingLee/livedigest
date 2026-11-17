@@ -9,7 +9,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from livedigest import douyin, pipeline, rooms
+from livedigest import pipeline, rooms
 from livedigest.config import Settings, load_settings
 from livedigest.engines import EngineError, get_engine
 from livedigest.files import file_lock
@@ -128,19 +128,6 @@ def cmd_process(ns: argparse.Namespace) -> int:
     return status
 
 
-def cmd_add_video(ns: argparse.Namespace) -> int:
-    settings = load_settings(ns.config)
-    try:
-        media = douyin.fetch_video(settings, ns.url)
-    except douyin.DouyinError as exc:
-        print(f"add-video: {exc}", file=sys.stderr)
-        return 1
-    print(f"saved: {media}")
-    if ns.no_process:
-        return 0
-    return _report(pipeline.process(settings, media))
-
-
 def cmd_status(ns: argparse.Namespace) -> int:
     settings = load_settings(ns.config)
     try:
@@ -215,15 +202,6 @@ def main(argv: list[str] | None = None) -> int:
         help="run this stage again, and every stage after it",
     )
     proc.set_defaults(func=cmd_process)
-
-    video = sub.add_parser(
-        "add-video", help="download a Douyin video, then transcribe and digest it"
-    )
-    video.add_argument("url", help="share link, video ID, or the whole share message")
-    video.add_argument(
-        "--no-process", action="store_true", help="only download the video"
-    )
-    video.set_defaults(func=cmd_add_video)
 
     sub.add_parser("status", help="show paths, engine, rooms and tools").set_defaults(
         func=cmd_status

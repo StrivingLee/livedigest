@@ -15,6 +15,8 @@ PLATFORM_NAMES = {
     "xiaohongshu": "小红书",
     "youtube": "YouTube",
 }
+# Files under <recordings>/douyin-video/ are short videos, not broadcasts.
+VIDEO_FOLDER = "douyin-video"
 # Older recordings (and other recorders) are named
 # <anchor>_[<title>_]<YYYY-MM-DD_HH-MM-SS>[_NNN].<ext>
 _NAME_RE = re.compile(

@@ -28,7 +28,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from livedigest import douyin, polish, recording, slides, speakers, transcript
+from livedigest import polish, recording, slides, speakers, transcript
 from livedigest.config import Settings
 from livedigest.digest import DigestError, write_digest
 from livedigest.engines import EngineError, get_engine
@@ -127,7 +127,7 @@ def build_meta(media: Path, anchor: str, duration: float, fp: str) -> dict:
     meta = {
         "anchor": anchor,
         "platform": platform,
-        "kind": "video" if platform == douyin.FOLDER else "live",
+        "kind": "video" if platform == recording.VIDEO_FOLDER else "live",
         "source_url": video.get("source_url"),
         "started_at": started.isoformat(timespec="seconds") if started else None,
         "ended_at": (

@@ -32,14 +32,14 @@ rooms.toml ──► livedigest watch  (polls each room every 60 s via streamget
 - macOS on Apple Silicon. All speech engines (Qwen3-ASR and MOSS-Transcribe-Diarize via mlx-audio, mlx-whisper) run on MLX.
 - Python ≥ 3.12 and [uv](https://docs.astral.sh/uv/).
 - ffmpeg and ffprobe on `PATH` (e.g. `brew install ffmpeg`).
-- Optional: yt-dlp (YouTube fallback resolver); the `claude` CLI or any other command that reads a prompt on stdin and prints Markdown (polish and digest); OpenCLI (only for `add-video`).
+- Optional: yt-dlp (YouTube fallback resolver); the `claude` CLI or any other command that reads a prompt on stdin and prints Markdown (polish and digest).
 - The first transcription downloads about 2.5 GB of model weights from Hugging Face (`mlx-community/Qwen3-ASR-1.7B-8bit`).
 
 **ZH.**
 - 搭载 Apple Silicon 的 macOS。所有语音引擎（mlx-audio 上的 Qwen3-ASR 与 MOSS-Transcribe-Diarize、mlx-whisper）都基于 MLX。
 - Python ≥ 3.12 和 [uv](https://docs.astral.sh/uv/)。
 - `PATH` 中有 ffmpeg 和 ffprobe（如 `brew install ffmpeg`）。
-- 可选：yt-dlp（YouTube 备用解析）；`claude` CLI 或任何从 stdin 读提示词、输出 Markdown 的命令（用于整理和摘要）；OpenCLI（仅 `add-video` 需要）。
+- 可选：yt-dlp（YouTube 备用解析）；`claude` CLI 或任何从 stdin 读提示词、输出 Markdown 的命令（用于整理和摘要）。
 - 首次转写会从 Hugging Face 下载约 2.5 GB 模型权重（`mlx-community/Qwen3-ASR-1.7B-8bit`）。
 
 ## Quick start / 快速开始
@@ -116,7 +116,6 @@ digests/
 | `livedigest watch` | Capture live rooms and transcribe as they go. One watcher at a time. |
 | `livedigest finish` | Without capturing: transcribe pending segments, end sessions a stopped watcher left open, retry failed stages. |
 | `livedigest process FILE… [--anchor A] [--redo transcribe\|polish\|digest]` | Transcribe, polish and digest local media files; `--redo` reruns a stage and every stage after it. |
-| `livedigest add-video URL [--no-process]` | Download one Douyin video through OpenCLI, then process it. |
 | `livedigest status` | Show paths, engine, rooms, free disk, cookies present and tools found. |
 
 Global options: `--config PATH` (or `LIVEDIGEST_CONFIG`), `-v`.
@@ -127,7 +126,6 @@ Global options: `--config PATH` (or `LIVEDIGEST_CONFIG`), `-v`.
 - `[capture]`: `segment_seconds` (300), `frame_interval` (10), `poll_seconds` (60), `merge_gap_seconds` (600, a room back within this is the same broadcast), `min_free_gb` (5.0), `quality = "low" | "best"` (default low: ask the platform for a smaller stream, since only speech and stills are kept; rooms with `keep = "video"` always get best), optional `proxy`.
 - `[transcribe]`: `engine = "auto" | "qwen3" | "whisper" | "moss"` (auto picks Qwen3-ASR when mlx-audio is installed), `language`, `qwen3_model`, `whisper_model`, `moss_model`. `engine = "moss"` labels who is speaking; see [Speaker labels](#speaker-labels--说话人标签).
 - `[polish]` and `[digest]`: `enabled`, `command` (default `["claude", "-p"]`, prompt on stdin, Markdown on stdout); `[digest] language` (default 简体中文). The prompts are written in Chinese.
-- `[douyin] opencli`: path to OpenCLI for `add-video`; empty searches `$OPENCLI`, `PATH`, then the newest `~/.nvm` Node.
 - `cookies.toml` (beside `livedigest.toml`, git-ignored): one cookie string per platform, e.g. `youtube = "..."`, passed to streamget for that platform.
 - `glossary/_common.txt` and `glossary/<anchor>.txt`: one term per line, `#` starts a comment. Terms go to Qwen3-ASR as hotwords (to Whisper as part of its prompt) and to the polish step as preferred spellings.
 
@@ -135,7 +133,6 @@ Global options: `--config PATH` (or `LIVEDIGEST_CONFIG`), `-v`.
 - `[capture]`：`segment_seconds`（300）、`frame_interval`（10）、`poll_seconds`（60）、`merge_gap_seconds`（600，在此时间内恢复的直播间算同一场）、`min_free_gb`（5.0）、`quality = "low" | "best"`（默认 low：只保留语音和截图，所以向平台请求较小的流；`keep = "video"` 的直播间总是用 best）、可选的 `proxy`。
 - `[transcribe]`：`engine = "auto" | "qwen3" | "whisper" | "moss"`（auto 在装有 mlx-audio 时选 Qwen3-ASR）、`language`、`qwen3_model`、`whisper_model`、`moss_model`。`engine = "moss"` 会标出说话人，见[说话人标签](#speaker-labels--说话人标签)。
 - `[polish]` 与 `[digest]`：`enabled`、`command`（默认 `["claude", "-p"]`，提示词从 stdin 读入，Markdown 从 stdout 输出）；`[digest] language`（默认 简体中文）。提示词是中文写的。
-- `[douyin] opencli`：`add-video` 使用的 OpenCLI 路径；留空则依次查找 `$OPENCLI`、`PATH`、最新的 `~/.nvm` Node。
 - `cookies.toml`（与 `livedigest.toml` 同目录，已被 git 忽略）：每个平台一行 cookie，如 `youtube = "..."`，解析该平台时传给 streamget。
 - `glossary/_common.txt` 与 `glossary/<主播>.txt`：每行一个词，`#` 开始注释。这些词作为 hotwords 交给 Qwen3-ASR（Whisper 则写入其 prompt），并作为首选写法交给整理步骤。
 
@@ -215,9 +212,9 @@ uv run ruff check
 
 ## Acknowledgements / 致谢
 
-**EN.** livedigest builds on streamget, mlx-audio, MLX, Qwen3-ASR, MOSS-Transcribe-Diarize, SpeechBrain ECAPA-TDNN, mlx-whisper / Whisper, FFmpeg, yt-dlp and OpenCLI, and learned much from DouyinLiveRecorder. See [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) for what each project contributed and its licence. Platform names, trademarks and content belong to their owners.
+**EN.** livedigest builds on streamget, mlx-audio, MLX, Qwen3-ASR, MOSS-Transcribe-Diarize, SpeechBrain ECAPA-TDNN, mlx-whisper / Whisper, FFmpeg and yt-dlp, and learned much from DouyinLiveRecorder. See [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) for what each project contributed and its licence. Platform names, trademarks and content belong to their owners.
 
-**ZH.** livedigest 构建在 streamget、mlx-audio、MLX、Qwen3-ASR、MOSS-Transcribe-Diarize、SpeechBrain ECAPA-TDNN、mlx-whisper / Whisper、FFmpeg、yt-dlp 和 OpenCLI 之上，并从 DouyinLiveRecorder 学到很多。各项目的贡献与许可证见 [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md)。平台名称、商标及内容归其所有者所有。
+**ZH.** livedigest 构建在 streamget、mlx-audio、MLX、Qwen3-ASR、MOSS-Transcribe-Diarize、SpeechBrain ECAPA-TDNN、mlx-whisper / Whisper、FFmpeg 和 yt-dlp 之上，并从 DouyinLiveRecorder 学到很多。各项目的贡献与许可证见 [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md)。平台名称、商标及内容归其所有者所有。
 
 ## Licence / 许可证
 

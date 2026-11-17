@@ -20,7 +20,6 @@ Installed by `uv sync` (Python packages) or by you (command-line tools). livedig
 | [Whisper](https://github.com/openai/whisper) (OpenAI) | MIT (code and weights) | The fallback model, as the MLX conversion `mlx-community/whisper-large-v3-turbo`. |
 | [FFmpeg](https://ffmpeg.org/) | LGPL-2.1-or-later, with optional GPL parts ([legal](https://ffmpeg.org/legal.html)) | Called as an external program: reads the live stream, writes the audio segments and the keyframe stills, optionally copies the video; decodes audio for the ASR engine; hashes stills. |
 | [yt-dlp](https://github.com/yt-dlp/yt-dlp) | Unlicense | Optional. Fallback resolver for YouTube rooms when streamget fails. |
-| [OpenCLI](https://github.com/jackwener/opencli) | Apache-2.0 | Optional, only for `livedigest add-video`. `opencli douyin detail` runs in your logged-in Chrome through its Browser Bridge extension and returns a Douyin video's metadata and a short-lived play URL, which livedigest then downloads itself. |
 
 The polish and digest steps call a command-line LLM, `claude -p` (Claude Code) by default. Any command that reads a prompt on stdin and prints Markdown can replace it; livedigest does not depend on a particular provider.
 
